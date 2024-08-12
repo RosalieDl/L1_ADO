@@ -20,29 +20,28 @@
 typedef char * str ;			// type string
 typedef unsigned char adr ; 	// type adresse (0 à 255)
 
-typedef enum erreur {
+enum erreur {			// codes d'erreur (cf fonction usage())
 	INV_FILE_ERR = 1,
 	FILE_LEN_ERR,
 	ARG_ERR,
 	INV_OP_ERR,
-	EXEC_ERR
-} err ;
+	EXEC_ERR } ;
 
 enum operation {ADD, SUB, NAND} ;						// pour l'UAL
 enum micro_op_status {OK, INV_CODE, ABORT, SKIP_P3} ;	// voir fonction microp()
 
-struct assoc {adr codeop ; int ops_list[MAX_MC] ; } ;	// associations code opération - liste de microcodes
+struct assoc {adr codeop ; int ops_tab[MAX_MC] ; } ;	// associations code opération - liste de microcodes
 
 adr memoire[taille_memoire] ;	// mémoire = tableau d'entiers non signés sur 8 bits
 adr PC, A, OP, AD, RS, RM ;		// les registres
 adr entree ;					// dernière saisie utilisateur
 enum operation UAL;				// type d'opération à effectuer dans l'UAL
 
-struct assoc table[NB_OPS] = {
+struct assoc table_corres[NB_OPS] = {
 	{ 0, {1, 13, 3, 0} },
 	{ 16, {1, 13, 2, 0} },	
-	{ 17, {18, 1, 13, 2, 0} },	// avec microcode supplémentaire pour le test
-	{ 18, {19, 1, 13, 2, 0} },  // avec microcode supplémentaire pour le test
+	{ 17, {18, 1, 13, 2, 0} },		// avec microcode supplémentaire pour le test
+	{ 18, {19, 1, 13, 2, 0} }, 		// idem
 	{ 32, {10, 1, 13, 12, 0} },
 	{ 33, {11, 1, 13, 12, 0} },
 	{ 34, {17, 1, 13, 12, 0} },
@@ -63,8 +62,8 @@ struct assoc table[NB_OPS] = {
 
 int get_prgm(str) ; 			
 int execute() ;
-int get_liste_ops(int *);
-int exec_ops_list(int *);
+int get_ops_tab(int *);
+int exec_ops_tab(int *);
 int microp(int);
 adr lire();
 int calculer();
@@ -91,7 +90,7 @@ int get_prgm(str fichier) {
 	printf("Adresse de chargement du programme [en hexadécimal] : ");
 	adr debut_ram = lire() ;
 	
-	/* lecture du code (par paires d'octets) */
+	/* lecture du code (octet par octet) */
 	int i = (int) debut_ram ;	// index (prochain emplacement disponible en mémoire)
 	int lu; 
 	unsigned int code ;			// opcode (bigramme hexa) lu dans le fichier
@@ -117,11 +116,11 @@ int execute(){
 	
 	for(int k = 0 ; k != iter_max ; k++) {		// boucle finie ou non (cf iter_max)
 		/* phase 1 */
-		exec_ops_list(phase1);	
+		exec_ops_tab(phase1);	
 
 		/* phase 2 */
-		if (get_liste_ops(phase2) == -1) break ;	// récupère liste de microcodes
-		if (exec_ops_list(phase2) != SKIP_P3) 		// exécute les microcodes
+		if (get_ops_tab(phase2) == -1) break ;	// récupère liste de microcodes
+		if (exec_ops_tab(phase2) != SKIP_P3) 		// exécute les microcodes
 			/* phase 3 (si besoin, ie pas un saut) */
 			microp(15) ;		// incrémenter PC
 
@@ -132,13 +131,13 @@ int execute(){
 }
 
 /* Cherche l'opération OP dans la table de correspondances et la copie dans le tableau */
-int get_liste_ops(int * liste){
+int get_ops_tab(int * tab){
 	int i = 0 ;
 
-	/* Chercher l'opération dans la table */
+	/* Chercher l'opération dans la table de correspondance */
 	while (i < NB_OPS){
-		if (table[i].codeop == OP){
-			memcpy(liste, table[i].ops_list, sizeof(int) * MAX_MC) ; // copie dans le vecteur
+		if (table_corres[i].codeop == OP){
+			memcpy(tab, table_corres[i].ops_tab, sizeof(int) * MAX_MC) ; // copie dans le vecteur
 			return 0; }
 		i++ ; }
 
@@ -146,14 +145,15 @@ int get_liste_ops(int * liste){
 	return -1 ;
 }
 
-/* Exécute une série de microcodes, fournis dans un vecteur */
-int exec_ops_list(int * tab){
+/* Exécute une série de microcodes, fournis dans un tableau */
+int exec_ops_tab(int * tab){
 	int i = 0, status ;
 	
+	/* exécuter chaque microcode de la liste (terminée par 0) */
 	while (i < MAX_MC && tab[i]) {
-		status = microp(tab[i++]);
-		if (status == INV_CODE) usage(EXEC_ERR) ;
-		else if (status == ABORT) break;
+		status = microp(tab[i++]);					// exécuter le code
+		if (status == INV_CODE) usage(EXEC_ERR) ;	// erreur (microcode erroné)
+		else if (status == ABORT) break;	// arrêter l'exécution (condition non remplie, pour un saut)
 	}
 	return status ;		// OK ou SKIP_P3
 }
@@ -203,7 +203,8 @@ adr lire(){
 		if (n == 1) break ;				// la saisie est correcte --> fini
         else printf("Saisir un nombre entre 00 et FF\n");	// saisie incorrecte
 	}
-	return (adr) lu ; }		
+	return (adr) lu ; 
+}		
 
 /* Effectue le calcul dans l'UAL */
 int calculer(){
